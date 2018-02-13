@@ -17,6 +17,8 @@
 #import <QuartzCore/QuartzCore.h>
 #import <MobileCoreServices/MobileCoreServices.h>
 #import <AssetsLibrary/AssetsLibrary.h>
+#import <AVFoundation/AVFoundation.h>
+#import <VideoToolbox/VideoToolbox.h>
 #import <objc/runtime.h>
 #import <pthread.h>
 #import <zlib.h>
@@ -1115,6 +1117,18 @@ YYImageType YYImageDetectType(CFDataRef data) {
         */
     }
     
+    magic4 = *((uint16_t *)bytes + 4);
+    if (magic4 == YY_FOUR_CC('f', 't', 'y', 'p')) {
+        uint32_t tmp = *((uint32_t *)(bytes + 8));
+        switch (tmp) {
+            case YY_FOUR_CC('h', 'e', 'i', 'c'):
+            case YY_FOUR_CC('h', 'e', 'i', 'x'):
+            case YY_FOUR_CC('m', 'i', 'f', '1'): {  // HEIC
+                return YYImageTypeHEIC;
+            } break;
+        }
+    }
+    
     uint16_t magic2 = *((uint16_t *)bytes);
     switch (magic2) {
         case YY_TWO_CC('B', 'A'):
@@ -1149,6 +1163,7 @@ CFStringRef YYImageTypeToUTType(YYImageType type) {
         case YYImageTypeICNS: return kUTTypeAppleICNS;
         case YYImageTypeGIF: return kUTTypeGIF;
         case YYImageTypePNG: return kUTTypePNG;
+        case YYImageTypeHEIC: return (__bridge CFStringRef)AVFileTypeHEIC;
         default: return NULL;
     }
 }
@@ -1164,7 +1179,8 @@ YYImageType YYImageTypeFromUTType(CFStringRef uti) {
                 (id)kUTTypeICO : @(YYImageTypeICO),
                 (id)kUTTypeAppleICNS : @(YYImageTypeICNS),
                 (id)kUTTypeGIF : @(YYImageTypeGIF),
-                (id)kUTTypePNG : @(YYImageTypePNG)};
+                (id)kUTTypePNG : @(YYImageTypePNG),
+                (id)AVFileTypeHEIC : @(YYImageTypeHEIC)};
     });
     if (!uti) return YYImageTypeUnknown;
     NSNumber *num = dic[(__bridge __strong id)(uti)];
@@ -1182,6 +1198,7 @@ NSString *YYImageTypeGetExtension(YYImageType type) {
         case YYImageTypeGIF: return @"gif";
         case YYImageTypePNG: return @"png";
         case YYImageTypeWebP: return @"webp";
+        case YYImageTypeHEIC: return @"heic";
         default: return nil;
     }
 }
@@ -2342,7 +2359,8 @@ CGImageRef YYCGImageCreateWithWebPData(CFDataRef webpData,
 
     switch (type) {
         case YYImageTypeJPEG:
-        case YYImageTypeJPEG2000: {
+        case YYImageTypeJPEG2000:
+        case YYImageTypeHEIC: {
             _quality = 0.9;
         } break;
         case YYImageTypeTIFF:
@@ -2407,6 +2425,13 @@ CGImageRef YYCGImageCreateWithWebPData(CFDataRef webpData,
         } break;
         case YYImageTypeWebP: {
             return NO;
+        } break;
+        case YYImageTypeHEIC: {
+            if (@available(iOS 11.0, *)) {
+                return VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC);
+            } else {
+                return NO;
+            }
         } break;
         default: return NO;
     }
